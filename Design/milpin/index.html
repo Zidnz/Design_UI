@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MILPÍN ERP v2.3</title>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- ios frame -->
+<script type="text/babel" src="../ios-frame.jsx"></script>
+
+<!--
+  ┌─────────────────────────────────────────────┐
+  │  Load order matters — each layer depends    │
+  │  on the one above it being on window.       │
+  │                                             │
+  │  1. theme.js        design tokens           │
+  │  2. data/           mock datasets           │
+  │  3. hooks/          custom React hooks      │
+  │  4. components/     UI building blocks      │
+  │  5. (inline)        Root + bootstrap        │
+  └─────────────────────────────────────────────┘
+-->
+
+<!-- 1. Design tokens -->
+<script src="theme.js"></script>
+
+<!-- 2. Data layer -->
+<script src="data/mockData.js"></script>
+
+<!-- 3. Hooks -->
+<script src="hooks/useBI.js"></script>
+<script src="hooks/useVoice.js"></script>
+
+<!-- 4. Components (plain JS — no JSX, load with <script src>) -->
+<script type="text/babel" src="components/Icons.jsx"></script>
+<script type="text/babel" src="components/StatCard.jsx"></script>
+<script type="text/babel" src="components/MiniBarChart.jsx"></script>
+<script type="text/babel" src="components/Toggle.jsx"></script>
+<script type="text/babel" src="components/TweaksPanel.jsx"></script>
+<script type="text/babel" src="components/TabBI.jsx"></script>
+<script type="text/babel" src="components/TabMapas.jsx"></script>
+<script type="text/babel" src="components/TabCostos.jsx"></script>
+<script type="text/babel" src="components/TabAjustes.jsx"></script>
+<script type="text/babel" src="components/MilpinApp.jsx"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1f14;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  ::-webkit-scrollbar { display: none; }
+
+  @keyframes milpinPulse {
+    0%   { box-shadow: 0 0 0 0   rgba(230,57,70,0.5), 0 4px 20px rgba(230,57,70,0.4); }
+    50%  { box-shadow: 0 0 0 14px rgba(230,57,70,0),   0 4px 20px rgba(230,57,70,0.4); }
+    100% { box-shadow: 0 0 0 0   rgba(230,57,70,0),   0 4px 20px rgba(230,57,70,0.4); }
+  }
+  @keyframes milpinFadeIn {
+    from { opacity:0; transform:scale(0.8); }
+    to   { opacity:1; transform:scale(1);   }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- 5. Root bootstrap -->
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ── Persist active tab across reloads ─────────
+function usePersistentTab(defaultTab) {
+  const [tab, setTab] = useState(() => {
+    return localStorage.getItem('milpin_tab') || defaultTab;
+  });
+  function setTabPersisted(t) {
+    setTab(t);
+    localStorage.setItem('milpin_tab', t);
+  }
+  return [tab, setTabPersisted];
+}
+
+// ── Root ──────────────────────────────────────
+function Root() {
+  const [themeKey, setThemeKey] = useState(
+    () => localStorage.getItem('milpin_theme') || 'default'
+  );
+  const [actor,   setActor]   = useState(0);
+  const [mapZoom, setMapZoom] = useState(11);
+  const [tweaks,  setTweaks]  = useState(false);
+
+  const theme = { ...THEMES[themeKey], brown2: '#8C7F6E', card: '#FFFFFF' };
+
+  // Persist theme
+  useEffect(() => {
+    localStorage.setItem('milpin_theme', themeKey);
+  }, [themeKey]);
+
+  // Tweaks bridge
+  useEffect(() => {
+    window.__setActor = (v) => setActor(parseInt(v));
+    window.__setZoom  = (v) => setMapZoom(parseInt(v));
+
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode')   setTweaks(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaks(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  return (
+    <>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
+        <IOSDevice width={390} height={844} dark={false}>
+          <IOSStatusBar dark={false} time="9:41"/>
+          <div style={{ position:'absolute', top:62, left:0, right:0, bottom:0, overflow:'hidden' }}>
+            <MilpinApp
+              theme={theme}
+              actor={actor}
+              setActor={setActor}
+              mapZoom={mapZoom}
+            />
+          </div>
+        </IOSDevice>
+      </div>
+
+      <TweaksPanel
+        visible={tweaks}
+        themeKey={themeKey}
+        setThemeKey={setThemeKey}
+        actor={actor}
+        setActor={setActor}
+        mapZoom={mapZoom}
+        setMapZoom={setMapZoom}
+      />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+
+<!-- Tweak defaults for host persistence -->
+<script>
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{"themeKey":"default","actor":0,"mapZoom":11}/*EDITMODE-END*/;
+</script>
+</body>
+</html>
